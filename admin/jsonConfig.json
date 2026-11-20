@@ -1,0 +1,35 @@
+{
+  "type": "panel",
+  "items": {
+    "host": {
+      "type": "text",
+      "label": "IP-Adresse / Hostname",
+      "default": "192.168.1.10"
+    },
+    "port": {
+      "type": "number",
+      "label": "Modbus TCP Port",
+      "default": 502
+    },
+    "unitId": {
+      "type": "number",
+      "label": "Unit-ID",
+      "default": 1
+    },
+    "addressOffset": {
+      "type": "number",
+      "label": "Register-Adressoffset (laut HA-Integration: 40001)",
+      "default": 40001
+    },
+    "pollInterval": {
+      "type": "number",
+      "label": "Abfrageintervall in Sekunden",
+      "default": 5
+    },
+    "heartbeat": {
+      "type": "checkbox",
+      "label": "EcoFlow Heartbeat senden (20 s)",
+      "default": true
+    }
+  }
+}

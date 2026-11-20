@@ -1,0 +1,21 @@
+{
+  "name": "iobroker.ecoflow-oasis",
+  "version": "0.1.0",
+  "description": "ioBroker adapter for EcoFlow STREAM devices via local Modbus TCP",
+  "main": "main.js",
+  "license": "MIT",
+  "author": "ioBroker community",
+  "keywords": [
+    "iobroker",
+    "ecoflow",
+    "modbus",
+    "stream"
+  ],
+  "dependencies": {
+    "@iobroker/adapter-core": "^3.2.3",
+    "modbus-serial": "^8.0.20"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

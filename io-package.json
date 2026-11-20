@@ -1,0 +1,40 @@
+{
+  "common": {
+    "name": "ecoflow-oasis",
+    "version": "0.1.0",
+    "title": "EcoFlow Oasis",
+    "desc": "EcoFlow STREAM 5000 / STREAM AC 5000 via local Modbus TCP",
+    "news": {
+      "0.1.0": {
+        "en": "Initial implementation for local Modbus TCP telemetry.",
+        "de": "Erste Version für lokale Modbus-TCP-Telemetrie."
+      }
+    },
+    "platform": "Javascript/Node.js",
+    "mode": "daemon",
+    "loglevel": "info",
+    "icon": "ecoflow.png",
+    "enabled": true,
+    "extIcon": "https://raw.githubusercontent.com/ecoflow-oasis-official/ha-ecoflow-official/main/info.md",
+    "connectionType": "local",
+    "dataSource": "poll",
+    "type": "energy",
+    "compact": true,
+    "materialize": true,
+    "supportCustoms": true,
+    "messagebox": true,
+    "adminUI": {
+      "config": "json"
+    },
+    "dependencies": [],
+    "globalDependencies": []
+  },
+  "native": {
+    "host": "192.168.1.10",
+    "port": 502,
+    "unitId": 1,
+    "addressOffset": 40001,
+    "pollInterval": 5,
+    "heartbeat": true
+  }
+}
