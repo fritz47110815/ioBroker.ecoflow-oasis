@@ -1,21 +1,16 @@
 {
   "name": "iobroker.ecoflow-oasis",
-  "version": "0.1.1",
-  "description": "ioBroker adapter for EcoFlow STREAM AC 5000 via local Modbus TCP (experimental)",
-  "main": "main.js",
+  "version": "0.1.2",
+  "description": "ioBroker adapter for EcoFlow devices via Modbus TCP (experimental)",
+  "author": "Community",
   "license": "MIT",
-  "author": "ioBroker community",
-  "keywords": [
-    "iobroker",
-    "ecoflow",
-    "modbus",
-    "stream-ac-5000"
-  ],
-  "dependencies": {
-    "@iobroker/adapter-core": "^3.2.3",
-    "modbus-serial": "^8.0.20"
-  },
+  "main": "main.js",
   "engines": {
     "node": ">=18"
-  }
+  },
+  "dependencies": {
+    "@iobroker/adapter-core": "^3.2.3",
+    "modbus-serial": "^8.0.0"
+  },
+  "keywords": ["ioBroker", "EcoFlow", "Modbus", "STREAM AC 5000"]
 }

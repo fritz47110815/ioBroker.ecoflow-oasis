@@ -80,6 +80,9 @@ class EcoflowOasis extends utils.Adapter {
 
     this.base = Number.isFinite(Number(cfg.addressOffset)) ? Number(cfg.addressOffset) : 40001;
     await this.createObjects();
+    // Subscribe explicitly so changes to our writable Control states reach onStateChange.
+    await this.subscribeStates("control.*");
+    this.log.info("State-Überwachung für control.* aktiviert.");
 
     try {
       await this.connect();
@@ -210,6 +213,7 @@ class EcoflowOasis extends utils.Adapter {
   }
 
   async onStateChange(id, state) {
+    this.log.debug(`StateChange empfangen: ${id}, ack=${state ? state.ack : "undefined"}, val=${state ? state.val : "undefined"}`);
     const relativeId = this.normalizeStateId(id);
     if (!relativeId.startsWith("control.") || !state || state.ack) return;
 

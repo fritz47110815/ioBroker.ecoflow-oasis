@@ -1,35 +1,11 @@
 {
   "type": "panel",
   "items": {
-    "host": {
-      "type": "text",
-      "label": "IP-Adresse / Hostname",
-      "default": "192.168.1.10"
-    },
-    "port": {
-      "type": "number",
-      "label": "Modbus TCP Port",
-      "default": 502
-    },
-    "unitId": {
-      "type": "number",
-      "label": "Unit-ID",
-      "default": 1
-    },
-    "addressOffset": {
-      "type": "number",
-      "label": "Register-Adressoffset (MVP-Standard 40001)",
-      "default": 40001
-    },
-    "pollInterval": {
-      "type": "number",
-      "label": "Abfrageintervall in Sekunden",
-      "default": 5
-    },
-    "enableControlWrites": {
-      "type": "checkbox",
-      "label": "Control-Schreibzugriffe erlauben (nur nach Registerprüfung!)",
-      "default": false
-    }
+    "host": { "type": "text", "label": "EcoFlow IP-Adresse", "newLine": true },
+    "port": { "type": "number", "label": "Modbus TCP Port", "default": 502 },
+    "unitId": { "type": "number", "label": "Modbus Unit-ID", "default": 1 },
+    "addressOffset": { "type": "number", "label": "Adressoffset", "default": 40001 },
+    "pollInterval": { "type": "number", "label": "Polling-Intervall (Sekunden)", "default": 5 },
+    "enableControlWrites": { "type": "checkbox", "label": "Control-Schreibzugriffe aktivieren (experimentell; nur nach bestätigter Registerzuordnung)", "default": false }
   }
 }

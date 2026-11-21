@@ -1,34 +1,23 @@
 {
   "common": {
     "name": "ecoflow-oasis",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "title": "EcoFlow Oasis",
-    "desc": "Experimenteller ioBroker-Adapter für EcoFlow STREAM AC 5000 über Modbus TCP",
-    "news": {
-      "0.1.1": {
-        "en": "Poll Control states and normalize state IDs; disable unverified control writes by default.",
-        "de": "Control-Objekte werden abgefragt; State-IDs werden robust verarbeitet. Nicht bestätigte Schreibregister sind standardmäßig gesperrt."
-      }
-    },
+    "desc": "Experimental EcoFlow Modbus TCP adapter",
     "platform": "Javascript/Node.js",
     "mode": "daemon",
-    "loglevel": "info",
+    "icon": "ecoflow-oasis.png",
     "enabled": true,
+    "loglevel": "info",
     "connectionType": "local",
     "dataSource": "poll",
-    "type": "energy",
+    "messagebox": true,
     "compact": true,
     "materialize": true,
-    "supportCustoms": true,
-    "messagebox": true,
-    "adminUI": {
-      "config": "json"
-    },
-    "dependencies": [],
-    "globalDependencies": []
+    "adminUI": { "config": "json" }
   },
   "native": {
-    "host": "192.168.1.10",
+    "host": "",
     "port": 502,
     "unitId": 1,
     "addressOffset": 40001,
