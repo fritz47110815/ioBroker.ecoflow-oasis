@@ -1,21 +1,19 @@
 {
   "common": {
     "name": "ecoflow-oasis",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "title": "EcoFlow Oasis",
-    "desc": "EcoFlow STREAM 5000 / STREAM AC 5000 via local Modbus TCP",
+    "desc": "Experimenteller ioBroker-Adapter für EcoFlow STREAM AC 5000 über Modbus TCP",
     "news": {
-      "0.1.0": {
-        "en": "Initial implementation for local Modbus TCP telemetry.",
-        "de": "Erste Version für lokale Modbus-TCP-Telemetrie."
+      "0.1.1": {
+        "en": "Poll Control states and normalize state IDs; disable unverified control writes by default.",
+        "de": "Control-Objekte werden abgefragt; State-IDs werden robust verarbeitet. Nicht bestätigte Schreibregister sind standardmäßig gesperrt."
       }
     },
     "platform": "Javascript/Node.js",
     "mode": "daemon",
     "loglevel": "info",
-    "icon": "ecoflow.png",
     "enabled": true,
-    "extIcon": "https://raw.githubusercontent.com/ecoflow-oasis-official/ha-ecoflow-official/main/info.md",
     "connectionType": "local",
     "dataSource": "poll",
     "type": "energy",
@@ -35,6 +33,6 @@
     "unitId": 1,
     "addressOffset": 40001,
     "pollInterval": 5,
-    "heartbeat": true
+    "enableControlWrites": false
   }
 }

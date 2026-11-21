@@ -18,7 +18,7 @@
     },
     "addressOffset": {
       "type": "number",
-      "label": "Register-Adressoffset (laut HA-Integration: 40001)",
+      "label": "Register-Adressoffset (MVP-Standard 40001)",
       "default": 40001
     },
     "pollInterval": {
@@ -26,10 +26,10 @@
       "label": "Abfrageintervall in Sekunden",
       "default": 5
     },
-    "heartbeat": {
+    "enableControlWrites": {
       "type": "checkbox",
-      "label": "EcoFlow Heartbeat senden (20 s)",
-      "default": true
+      "label": "Control-Schreibzugriffe erlauben (nur nach Registerprüfung!)",
+      "default": false
     }
   }
 }

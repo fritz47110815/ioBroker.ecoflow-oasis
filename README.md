@@ -1,42 +1,32 @@
-# ioBroker Adapter: ecoflow-oasis
+# ioBroker.ecoflow-oasis 0.1.1
 
-Lokale Modbus-TCP-Anbindung für EcoFlow STREAM 5000 / STREAM AC 5000.
+Experimenteller ioBroker-Adapter für EcoFlow STREAM AC 5000 (ES22) über Modbus TCP.
 
-## Installation (Entwicklerversion)
+## Änderungen in 0.1.1
+- Control-Datenpunkte werden jetzt im Polling mitgelesen.
+- Aktualisierte Control-Werte werden mit `ack: true` gesetzt.
+- State-IDs werden sowohl als relative als auch als vollständig qualifizierte ioBroker-IDs verarbeitet.
+- Mehr Diagnose-Logs und `info.lastPoll`.
+- Schreibzugriffe auf Control sind standardmäßig gesperrt.
 
-1. ZIP entpacken, Verzeichnis nach `iobroker.ecoflow-oasis` umbenennen.
-2. Im ioBroker-Host in das Verzeichnis wechseln.
-3. `npm install` ausführen.
-4. Adapter-Instanz anlegen und Host/IP konfigurieren.
-5. In der EcoFlow-App muss Modbus TCP am Gerät aktiviert sein.
+## Wichtiger Hinweis zum ES22
+Diese Version ist **nicht als vollständig bestätigte ES22-Protokollimplementierung zu verstehen**. Die Register-Offsets aus Version 0.1.0 wurden übernommen und sind nicht anhand der vollständigen aktuellen EcoFlow-ES22-Registerdefinition verifiziert. Insbesondere die drei bisherigen Control-Adressen und Skalierungen sind unbestätigt.
 
-## Enthaltene Funktionen
+Deshalb ist `enableControlWrites` standardmäßig `false`. Nicht aktivieren, solange die Control-Registeradressen, Datentypen und Skalierungen nicht mit der passenden ES22-Protokollversion abgeglichen wurden. Auch das Lesen dieser Control-Register kann ohne korrekte Zuordnung keine gültigen Werte garantieren.
 
-- Lokale Modbus-TCP-Verbindung (Port 502, Unit-ID 1)
-- Kern-Telemetrie: Systemleistung, Netzleistung, PV-Leistung, Batterieleistung,
-  SOC, PV-Eingänge, Netz-/Batteriewerte und Energiezähler
-- Heartbeat-Schreibvorgang an Register `0x025F` alle 20 Sekunden
-- Erste, bewusst begrenzte Schreibobjekte: Backup-Reserve, LED-Helligkeit,
-  Einspeisegrenze
+Die offizielle Home-Assistant-Integration beschreibt für ES22 eine eigene Registerabdeckung und separate Control-Register. Ein einfacher Abgleich von Namen oder ähnlichen Modellen reicht nicht aus.
 
-## Wichtige Hinweise
+## Installation
+1. ZIP entpacken.
+2. Im ioBroker-Adapterverzeichnis installieren bzw. den bestehenden Adapterordner sichern und ersetzen.
+3. Abhängigkeiten installieren: `npm install`.
+4. Adapterinstanz starten und Host/Port/Unit-ID prüfen.
+5. Logs zunächst auf Debug stellen und die Control-Objekte beobachten.
 
-Dies ist ein **MVP / Entwicklungsstand 0.1.0**, kein offiziell freigegebener
-oder vollständig getesteter Adapter. Die Registerliste ist eine kuratierte
-Teilmenge des umfangreichen Upstream-Registersheets. Vor produktivem Einsatz
-müssen Adressoffset und Datenwerte am eigenen Gerät gegengeprüft werden.
+## Diagnose
+- `info.connection`: Modbus-Verbindungsstatus
+- `info.lastPoll`: Zeitpunkt des letzten Poll-Durchlaufs
+- Einzelne Register-Lesefehler erscheinen bei Debug-Loglevel.
 
-Der Upstream-Adapter gruppiert Registerblöcke, verteilt Abfragen über das
-Pollingintervall und besitzt zusätzliche Wiederverbindungs-/Systemrollenlogik.
-Diese erste ioBroker-Fassung fragt die aufgeführten Register einzeln ab.
-Für große Registerlisten sollte das Polling auf zusammenhängende Blöcke
-optimiert werden.
-
-## Quelle und Lizenz
-
-Die Registerdefinitionen und Protokollannahmen orientieren sich an:
-https://github.com/ecoflow-oasis-official/ha-ecoflow-official
-
-Das Upstream-Projekt nennt die MIT-Lizenz. Diese Adapter-Neuentwicklung ist
-ebenfalls als MIT lizenziert; bitte Lizenz-/Copyright-Hinweise bei einer
-späteren Übernahme von Quelltext vollständig beibehalten.
+## Lizenz
+MIT

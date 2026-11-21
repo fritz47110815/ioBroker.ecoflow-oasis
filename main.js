@@ -1,10 +1,12 @@
 "use strict";
+
 const utils = require("@iobroker/adapter-core");
 const ModbusRTU = require("modbus-serial");
 
-// Register offsets and datatypes taken from the upstream EcoFlow register table.
-// This first adapter release deliberately starts with the core STREAM telemetry set.
-// Additional entries can be added using the same schema.
+// NOTE: These register offsets are inherited from the first MVP and have NOT
+// been independently verified against the current STREAM AC 5000 register map.
+// Do not enable control writes until the offsets/scaling are confirmed for your
+// firmware/device by the official protocol documentation.
 const REGISTERS = [
   [0x0001,"system_phase","System phase","UINT16",""],
   [0x0003,"serial_number","Serial number","STRING",""],
@@ -44,165 +46,232 @@ const REGISTERS = [
   [0x08D0,"solar_energy_total","Solar energy total","FLOAT","kWh"],
   [0x0800,"system_fault_count","System fault count","UINT16",""]
 ];
-const WORDS = {UINT16:1,INT16:1,UINT32:2,INT32:2,FLOAT:2,STRING:8};
+
+const CONTROL_DEFS = [
+  { id:"backup_reserve_ratio", name:"Backup reserve ratio", offset:0x0217, min:0, max:100, unit:"%" },
+  { id:"led_brightness", name:"LED brightness", offset:0x021C, min:0, max:100, unit:"%" },
+  { id:"feed_in_limit", name:"Feed-in limit", offset:0x023C, min:1, max:100, unit:"%" }
+];
+
+const WORDS = { UINT16:1, INT16:1, UINT32:2, INT32:2, FLOAT:2, STRING:8 };
 
 class EcoflowOasis extends utils.Adapter {
   constructor(options = {}) {
-    super({...options,name:"ecoflow-oasis"});
+    super({ ...options, name:"ecoflow-oasis" });
     this.client = new ModbusRTU();
     this.connected = false;
     this.pollTimer = null;
-    this.heartbeatTimer = null;
+    this.reconnectTimer = null;
     this.pollBusy = false;
+    this.stopping = false;
+
     this.on("ready", () => this.start());
-    this.on("stateChange", (id,state) => this.onStateChange(id,state));
+    this.on("stateChange", (id, state) => this.onStateChange(id, state));
     this.on("unload", cb => this.stop(cb));
   }
 
   async start() {
-    const n = this.config;
-    if (!n.host) {
-      this.log.error("Bitte eine EcoFlow-IP-Adresse in der Adapterkonfiguration eintragen.");
+    const cfg = this.config;
+    this.log.info("EcoFlow Oasis Adapter startet.");
+    if (!cfg.host) {
+      this.log.error("Keine EcoFlow-IP-Adresse konfiguriert.");
       return;
     }
-    this.base = Number.isInteger(n.addressOffset) ? n.addressOffset : 40001;
+
+    this.base = Number.isFinite(Number(cfg.addressOffset)) ? Number(cfg.addressOffset) : 40001;
+    await this.createObjects();
+
     try {
-      await this.client.connectTCP(n.host,{port:n.port || 502});
-      this.client.setID(n.unitId || 1);
-      this.client.setTimeout(4000);
-      this.connected = true;
-      this.log.info(`Verbunden mit EcoFlow ${n.host}:${n.port || 502}`);
-      await this.createObjects();
+      await this.connect();
       await this.poll();
-      this.pollTimer = setInterval(() => this.poll(), Math.max(2, n.pollInterval || 5)*1000);
-      if (n.heartbeat !== false) {
-        this.heartbeatTimer = setInterval(() => this.writeRegister(0x025F,"UINT16",1).catch(e => this.log.debug(`Heartbeat: ${e.message}`)),20000);
-      }
-    } catch (e) {
-      this.log.error(`Modbus-Verbindung fehlgeschlagen: ${e.message}`);
+      this.pollTimer = setInterval(() => this.poll(), Math.max(2, Number(cfg.pollInterval) || 5) * 1000);
+    } catch (err) {
+      this.log.error(`Verbindung zu ${cfg.host}:${cfg.port || 502} fehlgeschlagen: ${err.message}`);
       this.scheduleReconnect();
     }
+  }
+
+  async connect() {
+    this.client = new ModbusRTU();
+    this.client.setTimeout(4000);
+    await this.client.connectTCP(this.config.host, { port:Number(this.config.port) || 502 });
+    this.client.setID(Number(this.config.unitId) || 1);
+    this.connected = true;
+    await this.setStateAsync("info.connection", true, true);
+    this.log.info(`Modbus TCP verbunden: ${this.config.host}:${Number(this.config.port) || 502}, Unit-ID ${Number(this.config.unitId) || 1}`);
   }
 
   async createObjects() {
-    await this.setObjectNotExistsAsync("info",{type:"channel",common:{name:"Verbindungsstatus"},native:{}});
-    await this.setObjectNotExistsAsync("info.connection",{type:"state",common:{name:"Verbindung",type:"boolean",role:"indicator.connected",read:true,write:false},native:{}});
-    for (const [offset,id,name,dtype,unit] of REGISTERS) {
-      await this.setObjectNotExistsAsync(id,{
+    await this.setObjectNotExistsAsync("info", { type:"channel", common:{ name:"Verbindungsstatus" }, native:{} });
+    await this.setObjectNotExistsAsync("info.connection", {
+      type:"state",
+      common:{ name:"Verbindung", type:"boolean", role:"indicator.connected", read:true, write:false },
+      native:{}
+    });
+    await this.setObjectNotExistsAsync("info.lastPoll", {
+      type:"state",
+      common:{ name:"Letzter erfolgreicher Poll", type:"string", role:"text", read:true, write:false },
+      native:{}
+    });
+
+    for (const [offset, id, name, dtype, unit] of REGISTERS) {
+      await this.setObjectNotExistsAsync(id, {
         type:"state",
-        common:{name, type:dtype==="STRING"?"string":"number", role:unit==="W"?"value.power":unit==="%"?"value.battery":unit==="kWh"?"value.energy":"value",
-          unit,read:true,write:false},
-        native:{offset,dtype}
+        common:{
+          name, type:dtype === "STRING" ? "string" : "number",
+          role:unit === "W" ? "value.power" : unit === "%" ? "value.battery" : unit === "kWh" ? "value.energy" : "value",
+          unit, read:true, write:false
+        },
+        native:{ offset, dtype }
       });
     }
-    // Writable setpoints are intentionally exposed separately and only for known control points.
-    const controls = [
-      [0x0217,"backup_reserve_ratio","Backup reserve ratio",0,100,"%"],
-      [0x021C,"led_brightness","LED brightness",0,100,"%"],
-      [0x023C,"feed_in_limit","Feed-in limit",1,100,"%"]
-    ];
-    for (const [offset,id,name,min,max,unit] of controls) {
-      await this.setObjectNotExistsAsync(`control.${id}`,{type:"state",common:{name,type:"number",role:"level",unit,min,max,read:true,write:true},native:{offset,dtype:"UINT16"}});
+
+    await this.setObjectNotExistsAsync("control", { type:"channel", common:{ name:"Control" }, native:{} });
+    for (const c of CONTROL_DEFS) {
+      await this.setObjectNotExistsAsync(`control.${c.id}`, {
+        type:"state",
+        common:{ name:c.name, type:"number", role:"level", unit:c.unit, min:c.min, max:c.max, read:true, write:true },
+        native:{ offset:c.offset, dtype:"UINT16", unverified:true }
+      });
     }
-    await this.setStateAsync("info.connection",true,true);
   }
 
-  async readRegister(offset,dtype) {
+  async readRegister(offset, dtype) {
     const count = WORDS[dtype] || 1;
-    const r = await this.client.readHoldingRegisters(this.base + offset,count);
-    const w = r.data;
-    if (dtype==="UINT16") return w[0];
-    if (dtype==="INT16") return w[0] > 32767 ? w[0]-65536 : w[0];
-    const b = Buffer.alloc(4); b.writeUInt16BE(w[0],0); b.writeUInt16BE(w[1],2);
-    if (dtype==="UINT32") return b.readUInt32BE(0);
-    if (dtype==="INT32") return b.readInt32BE(0);
-    if (dtype==="FLOAT") return Number(b.readFloatBE(0).toFixed(4));
-    if (dtype==="STRING") {
-      const bytes=Buffer.alloc(count*2); w.forEach((v,i)=>bytes.writeUInt16BE(v,i*2));
-      return bytes.toString("ascii").replace(/\0+$/g,"");
+    const result = await this.client.readHoldingRegisters(this.base + offset, count);
+    const words = result.data;
+    if (dtype === "UINT16") return words[0];
+    if (dtype === "INT16") return words[0] > 32767 ? words[0] - 65536 : words[0];
+
+    const buf = Buffer.alloc(4);
+    buf.writeUInt16BE(words[0], 0);
+    buf.writeUInt16BE(words[1], 2);
+    if (dtype === "UINT32") return buf.readUInt32BE(0);
+    if (dtype === "INT32") return buf.readInt32BE(0);
+    if (dtype === "FLOAT") return Number(buf.readFloatBE(0).toFixed(4));
+    if (dtype === "STRING") {
+      const str = Buffer.alloc(count * 2);
+      words.forEach((v, i) => str.writeUInt16BE(v, i * 2));
+      return str.toString("ascii").replace(/\0+$/g, "").trim();
     }
-    return null;
+    throw new Error(`Unbekannter Datentyp: ${dtype}`);
   }
 
-  async writeRegister(offset,dtype,value) {
-    const words=[];
-    if (dtype==="UINT16") words.push(Number(value)&0xffff);
-    else if (dtype==="UINT32" || dtype==="INT32" || dtype==="FLOAT") {
-      const b=Buffer.alloc(4);
-      if (dtype==="FLOAT") b.writeFloatBE(Number(value));
-      else if (dtype==="INT32") b.writeInt32BE(Number(value));
-      else b.writeUInt32BE(Number(value));
-      words.push(b.readUInt16BE(0),b.readUInt16BE(2));
-    } else throw new Error(`Nicht unterstützter Schreibtyp ${dtype}`);
-    if (words.length===1) await this.client.writeRegister(this.base+offset,words[0]);
-    else await this.client.writeRegisters(this.base+offset,words);
+  async writeRegister(offset, value) {
+    await this.client.writeRegister(this.base + offset, Number(value) & 0xffff);
   }
 
   async poll() {
-    if (this.pollBusy || !this.connected) return;
-    this.pollBusy=true;
+    if (this.pollBusy || !this.connected || this.stopping) return;
+    this.pollBusy = true;
+    let successes = 0;
+
     try {
-      for (const [offset,id,,dtype] of REGISTERS) {
+      for (const [offset, id, , dtype] of REGISTERS) {
         try {
-          const value=await this.readRegister(offset,dtype);
-          if (value !== null && !(typeof value==="number" && !Number.isFinite(value))) {
-            await this.setStateAsync(id,{val:value,ack:true});
+          const value = await this.readRegister(offset, dtype);
+          if (value !== null && !(typeof value === "number" && !Number.isFinite(value))) {
+            await this.setStateAsync(id, { val:value, ack:true });
+            successes++;
           }
-        } catch (e) {
-          this.log.debug(`Lesefehler ${id} (0x${offset.toString(16)}): ${e.message}`);
+        } catch (err) {
+          this.log.debug(`Lesefehler ${id} (Register 0x${offset.toString(16)}): ${err.message}`);
         }
       }
-      await this.setStateAsync("info.connection",true,true);
-    } catch(e) {
-      this.log.warn(`Polling-Fehler: ${e.message}`);
-      await this.setStateAsync("info.connection",false,true);
-      this.connected=false;
+
+      // FIX: Control states are now polled and updated from their configured registers.
+      for (const control of CONTROL_DEFS) {
+        try {
+          const value = await this.readRegister(control.offset, "UINT16");
+          await this.setStateAsync(`control.${control.id}`, { val:value, ack:true });
+          successes++;
+        } catch (err) {
+          this.log.debug(`Lesefehler Control.${control.id} (Register 0x${control.offset.toString(16)}): ${err.message}`);
+        }
+      }
+
+      await this.setStateAsync("info.connection", true, true);
+      await this.setStateAsync("info.lastPoll", new Date().toISOString(), true);
+      this.log.debug(`Polling abgeschlossen: ${successes} Registerwerte aktualisiert.`);
+    } catch (err) {
+      this.log.warn(`Polling fehlgeschlagen: ${err.message}`);
+      this.connected = false;
+      await this.setStateAsync("info.connection", false, true);
       this.scheduleReconnect();
-    } finally { this.pollBusy=false; }
+    } finally {
+      this.pollBusy = false;
+    }
   }
 
-  async onStateChange(id,state) {
-    if (!id || !state || state.ack || !id.startsWith(`${this.namespace}.control.`)) return;
-    const key=id.split(".").pop();
-    const map={backup_reserve_ratio:0x0217,led_brightness:0x021C,feed_in_limit:0x023C};
-    const offset=map[key];
-    if (!offset) return;
-    const value=Number(state.val);
-    const limits={backup_reserve_ratio:[0,100],led_brightness:[0,100],feed_in_limit:[1,100]}[key];
-    if (!Number.isFinite(value) || value<limits[0] || value>limits[1] || !Number.isInteger(value)) {
-      this.log.warn(`Ungültiger Wert für ${key}: ${state.val}`);
+  normalizeStateId(id) {
+    if (!id) return "";
+    const prefix = `${this.namespace}.`;
+    return id.startsWith(prefix) ? id.slice(prefix.length) : id;
+  }
+
+  async onStateChange(id, state) {
+    const relativeId = this.normalizeStateId(id);
+    if (!relativeId.startsWith("control.") || !state || state.ack) return;
+
+    const key = relativeId.slice("control.".length);
+    const control = CONTROL_DEFS.find(c => c.id === key);
+    if (!control) {
+      this.log.warn(`Unbekanntes Control-Objekt: ${id}`);
       return;
     }
+
+    const value = Number(state.val);
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value < control.min || value > control.max) {
+      this.log.warn(`Ungültiger Wert für Control.${key}: ${state.val}`);
+      return;
+    }
+
+    // The old MVP register addresses are not verified for ES22. Writes therefore
+    // remain opt-in to avoid sending an unverified command to the inverter.
+    if (this.config.enableControlWrites !== true) {
+      this.log.warn(`Schreibvorgang für Control.${key} blockiert: Registerzuordnung nicht bestätigt. Erst nach Prüfung der ES22-Protokollversion enableControlWrites aktivieren.`);
+      return;
+    }
+
+    if (!this.connected) {
+      this.log.warn(`Schreibvorgang für Control.${key} nicht möglich: Modbus nicht verbunden.`);
+      return;
+    }
+
     try {
-      await this.writeRegister(offset,"UINT16",value);
-      await this.setStateAsync(id,{val:value,ack:true});
-      this.log.info(`${key} auf ${value} gesetzt`);
-    } catch(e) { this.log.error(`Schreiben von ${key} fehlgeschlagen: ${e.message}`); }
+      this.log.info(`Schreibauftrag Control.${key}=${value} empfangen.`);
+      await this.writeRegister(control.offset, value);
+      const actual = await this.readRegister(control.offset, "UINT16");
+      await this.setStateAsync(`control.${key}`, { val:actual, ack:true });
+      this.log.info(`Control.${key}: Registerantwort=${actual}.`);
+    } catch (err) {
+      this.log.error(`Schreiben von Control.${key} fehlgeschlagen: ${err.message}`);
+    }
   }
 
   scheduleReconnect() {
-    if (this.reconnectTimer) return;
-    this.reconnectTimer=setTimeout(async()=>{
-      this.reconnectTimer=null;
+    if (this.reconnectTimer || this.stopping) return;
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
       try {
-        await this.client.connectTCP(this.config.host,{port:this.config.port||502});
-        this.client.setID(this.config.unitId||1);
-        this.client.setTimeout(4000);
-        this.connected=true;
-        await this.setStateAsync("info.connection",true,true);
-        this.log.info("Modbus-Verbindung wiederhergestellt");
+        await this.connect();
         await this.poll();
-      } catch(e) { this.log.warn(`Reconnect fehlgeschlagen: ${e.message}`); this.scheduleReconnect(); }
-    },5000);
+      } catch (err) {
+        this.log.warn(`Reconnect fehlgeschlagen: ${err.message}`);
+        this.connected = false;
+        this.scheduleReconnect();
+      }
+    }, 5000);
   }
 
   stop(callback) {
+    this.stopping = true;
     if (this.pollTimer) clearInterval(this.pollTimer);
-    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    try { this.client.close(()=>{}); } catch {}
+    try { this.client.close(() => {}); } catch (_) {}
     callback();
   }
 }
+
 if (module.parent) module.exports = options => new EcoflowOasis(options);
 else new EcoflowOasis();
